@@ -1,4 +1,5 @@
 import os
+import asyncio
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from pathlib import Path
 from uuid import uuid4
@@ -49,7 +50,7 @@ async def create_upload_file(file: UploadFile = File(...)):
         while chunk := await file.read(1024 * 1024):
             buffer.write(chunk)
 
-    prepared = prepare_audio(str(saved_path))
+    prepared = await asyncio.to_thread(prepare_audio, str(saved_path))
 
     return {
         "filename": file.filename,
