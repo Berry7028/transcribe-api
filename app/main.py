@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from api.routers import transcription
-from core.errors import TranscribeAPIError
+from app.api.routers import transcription
+from app.core.errors import TranscribeAPIError
 
 
 app = FastAPI()

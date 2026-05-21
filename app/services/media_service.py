@@ -6,7 +6,7 @@ import ffmpeg
 from pathlib import Path
 from uuid import uuid4
 
-from core.errors import FFmpegNotAvailableError, MediaConversionError
+from app.core.errors import FFmpegNotAvailableError, MediaConversionError
 
 VIDEO_EXTENSIONS = {
     ".mp4",
