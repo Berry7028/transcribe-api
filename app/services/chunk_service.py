@@ -19,6 +19,8 @@ from app.core.errors import (
 NORMALIZED_AUDIO_CODEC = "libmp3lame"
 NORMALIZED_SAMPLE_RATE = 16_000
 NORMALIZED_CHANNELS = 1
+_CHUNK_SIZE_SHRINK_MAX_ATTEMPTS = 48
+_CHUNK_SIZE_FIT_MARGIN = 0.92
 
 
 @dataclass(frozen=True)
@@ -150,12 +152,12 @@ def _find_split_ms(
     start_ms: int,
     duration_ms: int,
     bytes_per_ms: float,
-) -> int:
+) -> tuple[int, bool]:
     remaining_ms = duration_ms - start_ms
     remaining_bytes = _estimate_size_bytes(bytes_per_ms, remaining_ms)
 
     if remaining_bytes <= settings.openai_max_upload_bytes:
-        return duration_ms
+        return (duration_ms, False)
 
     target_duration_ms = int(settings.chunk_target_bytes / bytes_per_ms)
     max_duration_ms = int(settings.chunk_max_bytes / bytes_per_ms)
@@ -189,7 +191,7 @@ def _find_split_ms(
             settings.chunk_keep_silence_ms,
         )
         if split_ms is not None:
-            return split_ms
+            return (split_ms, False)
 
     split_ms = max_end_ms
     if split_ms <= start_ms:
@@ -197,7 +199,7 @@ def _find_split_ms(
     if split_ms <= start_ms:
         raise ChunkingFailedError("時間ベース分割位置を決定できませんでした")
 
-    return split_ms
+    return (split_ms, True)
 
 
 def _export_chunk(
@@ -224,47 +226,54 @@ def _export_with_size_limit(
     output_path: Path,
     start_ms: int,
     end_ms: int,
-    bytes_per_ms: float,
 ) -> AudioChunk:
     start_seconds = _ms_to_seconds(start_ms)
-    end_seconds = _ms_to_seconds(end_ms)
-    duration_seconds = end_seconds - start_seconds
+    current_end_ms = end_ms
 
-    _export_chunk(source_path, output_path, start_seconds, duration_seconds)
-    size_bytes = _get_file_size(str(output_path))
+    for _ in range(_CHUNK_SIZE_SHRINK_MAX_ATTEMPTS):
+        end_seconds = _ms_to_seconds(current_end_ms)
+        duration_seconds = end_seconds - start_seconds
+        if duration_seconds <= 0:
+            raise ChunkingFailedError(
+                "チャンクの長さが 0 以下になり、書き出せませんでした"
+            )
 
-    if size_bytes <= settings.chunk_max_bytes:
-        return AudioChunk(
-            index=0,
-            path=str(output_path),
-            start_seconds=start_seconds,
-            end_seconds=end_seconds,
-            size_bytes=size_bytes,
+        _export_chunk(source_path, output_path, start_seconds, duration_seconds)
+        size_bytes = _get_file_size(str(output_path))
+
+        if size_bytes <= settings.chunk_max_bytes:
+            return AudioChunk(
+                index=0,
+                path=str(output_path),
+                start_seconds=start_seconds,
+                end_seconds=end_seconds,
+                size_bytes=size_bytes,
+            )
+
+        duration_ms = current_end_ms - start_ms
+        if duration_ms <= 1:
+            raise ChunkingFailedError(
+                f"チャンクサイズ ({size_bytes} bytes) が上限 ({settings.chunk_max_bytes} bytes) を超え、"
+                "これ以上短縮できませんでした"
+            )
+
+        measured_bpm = size_bytes / duration_ms
+        if measured_bpm <= 0:
+            raise ChunkingFailedError(
+                "チャンクのビットレート推定が不正なため、サイズ上限に収められませんでした"
+            )
+
+        target_duration_ms = int(
+            settings.chunk_max_bytes / measured_bpm * _CHUNK_SIZE_FIT_MARGIN
         )
+        new_end_ms = start_ms + max(1, min(target_duration_ms, duration_ms - 1))
+        if new_end_ms >= current_end_ms:
+            new_end_ms = start_ms + max(1, duration_ms // 2)
+        current_end_ms = new_end_ms
 
-    max_duration_ms = int(settings.chunk_max_bytes / bytes_per_ms)
-    shortened_end_ms = start_ms + max(1, max_duration_ms)
-    if shortened_end_ms >= end_ms:
-        raise ChunkingFailedError(
-            f"チャンクサイズが上限 ({settings.chunk_max_bytes} bytes) を超え、短縮後も収まりませんでした"
-        )
-
-    shortened_end_seconds = _ms_to_seconds(shortened_end_ms)
-    shortened_duration = shortened_end_seconds - start_seconds
-    _export_chunk(source_path, output_path, start_seconds, shortened_duration)
-    size_bytes = _get_file_size(str(output_path))
-
-    if size_bytes > settings.chunk_max_bytes:
-        raise ChunkingFailedError(
-            f"チャンクサイズ ({size_bytes} bytes) が上限 ({settings.chunk_max_bytes} bytes) を超えています"
-        )
-
-    return AudioChunk(
-        index=0,
-        path=str(output_path),
-        start_seconds=start_seconds,
-        end_seconds=shortened_end_seconds,
-        size_bytes=size_bytes,
+    raise ChunkingFailedError(
+        f"チャンクサイズを上限 ({settings.chunk_max_bytes} bytes) 以下に収める再試行が "
+        f"{_CHUNK_SIZE_SHRINK_MAX_ATTEMPTS} 回で尽きました"
     )
 
 
@@ -298,7 +307,9 @@ def create_chunks(normalized_path: str) -> list[AudioChunk]:
     index = 0
 
     while start_ms < duration_ms:
-        end_ms = _find_split_ms(audio, start_ms, duration_ms, bytes_per_ms)
+        end_ms, used_time_fallback = _find_split_ms(
+            audio, start_ms, duration_ms, bytes_per_ms
+        )
         output_path = chunks_dir / f"{chunk_prefix}_{index:03d}.mp3"
 
         chunk = _export_with_size_limit(
@@ -306,7 +317,6 @@ def create_chunks(normalized_path: str) -> list[AudioChunk]:
             output_path,
             start_ms,
             end_ms,
-            bytes_per_ms,
         )
         chunks.append(
             AudioChunk(
@@ -322,8 +332,13 @@ def create_chunks(normalized_path: str) -> list[AudioChunk]:
         if actual_end_ms >= duration_ms:
             break
 
-        overlap_ms = int(settings.chunk_time_fallback_overlap_seconds * 1000)
-        start_ms = max(actual_end_ms - overlap_ms, start_ms + 1)
+        overlap_ms = 0
+        if used_time_fallback:
+            overlap_ms = int(settings.chunk_time_fallback_overlap_seconds * 1000)
+        if overlap_ms > 0:
+            start_ms = max(actual_end_ms - overlap_ms, start_ms + 1)
+        else:
+            start_ms = max(actual_end_ms, start_ms + 1)
         index += 1
 
         if index > 10_000:
