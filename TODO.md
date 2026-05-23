@@ -22,12 +22,14 @@
 | アップロード後に `prepare_audio` → OpenAI 文字起こしを実行し、`text` を返す | `app/api/routers/transcription.py` |
 | **`errors.py`（一部）** — `TranscribeAPIError` と ffmpeg / 変換失敗用例外 | `app/core/errors.py` |
 | **`TranscribeAPIError` のグローバル例外ハンドラー**（設計どおりの `{ "error": { "code", "message" } }` 形式） | `app/main.py` |
+| **`chunk_service`**（サイズ判定、無音検出、チャンク書き出し、開始/終了秒メタデータ） | `app/services/chunk_service.py`、`architecture/implementation-steps.md` **L58–L67** |
+| 一時ディレクトリ `app/tmp/chunks/` | `chunk_service` のパス解決 |
 
-**現状の到達点:** Step 5 まで完了。短い WAV を `/api/transcriptions` にアップロードし、`whisper-1` で `"Beep."` が返るところまで実動作確認済み。
+**現状の到達点:** Step 6 まで完了。25MB 以下は単発文字起こし、超過ファイルは `chunk_service` で分割可能（ルーター統合は未実施）。
 
 ### 未完了・未着手（設計どおりまだないもの）
 
-- `chunk_service` / `merge_service` / `transcription_service`  
+- `merge_service` / `transcription_service`
 - `app/schemas/transcription.py`、`app/utils/*`  
 - 設計どおりの成功レスポンス（`text` は返却済み。`language` / `duration_seconds` / `chunks` などは未実装）  
 - Step 8 相当の**エラー処理の完全統一**（拡張子エラー等はまだ `HTTPException` の plain `detail`）  
@@ -38,7 +40,7 @@
 
 | 内容 | 状態 |
 |------|------|
-| `app/core/errors.py` | ffmpeg / 変換失敗 / OpenAI 関連のみ。全エラーコードは未網羅 |
+| `app/core/errors.py` | ffmpeg / 変換失敗 / OpenAI / chunking 関連。全エラーコードは未網羅 |
 | API エラーレスポンス | `TranscribeAPIError` 経由のみ統一。400 系は未統一 |
 | ルーターの責務 | 保存・拡張子チェックに加え `prepare_audio` / `transcribe_audio` 呼び出しまで実装（本来は `transcription_service` へ移す想定） |
 
@@ -54,16 +56,15 @@
 
 ## 次にやるべきこと（優先順）
 
-設計上の推奨順は `architecture/implementation-steps.md` **L58 以降**（Step 5 は完了）。
+設計上の推奨順は `architecture/implementation-steps.md` **L69 以降**（Step 6 は完了）。
 
-1. **Step 6: `chunk_service`**（サイズ判定・無音・チャンク書き出し）— `architecture/implementation-steps.md` **L58–L67**  
-   - 詳細仕様: `architecture/chunking-design.md` **L7–L16**、**L26–L35**、**L43–L59**、**L61–L72**、フォールバック **L77–L87**  
-2. **Step 7: `merge_service`** — `architecture/implementation-steps.md` **L69–L77**、`architecture/file-responsibilities.md` **L128–L137**  
-3. **`transcription_service` で全体オーケストレーション** — `architecture/file-responsibilities.md` **L75–L88**、フロー全体 `architecture/processing-flow.md` **L5–L19**、**L82–L92**  
-   - ルーターから `prepare_audio` 直呼びを service 層へ移す  
-4. **Step 8: エラー処理・レスポンス形式の統一** — `architecture/implementation-steps.md` **L79–L88**、エラー一覧 `architecture/api-design.md` **L41–L61**、エラー定義の置き場 `architecture/file-responsibilities.md` **L55–L63**  
-5. **Step 9: テスト** — `architecture/implementation-steps.md` **L90–L100**  
-6. **Step 10: 非同期ジョブは将来検討** — `architecture/implementation-steps.md` **L102–L113**、`architecture/api-design.md` **L63–L76**  
+1. **Step 7: `merge_service`** — `architecture/implementation-steps.md` **L69–L77**、`architecture/file-responsibilities.md` **L128–L137**
+2. **`transcription_service` で全体オーケストレーション** — `architecture/file-responsibilities.md` **L75–L88**、フロー全体 `architecture/processing-flow.md` **L5–L19**、**L82–L92**
+   - ルーターから `prepare_audio` 直呼びを service 層へ移す
+   - `needs_chunking` / `create_chunks` を組み込む
+3. **Step 8: エラー処理・レスポンス形式の統一** — `architecture/implementation-steps.md` **L79–L88**、エラー一覧 `architecture/api-design.md` **L41–L61**、エラー定義の置き場 `architecture/file-responsibilities.md` **L55–L63**
+4. **Step 9: テスト** — `architecture/implementation-steps.md` **L90–L100**
+5. **Step 10: 非同期ジョブは将来検討** — `architecture/implementation-steps.md` **L102–L113**、`architecture/api-design.md` **L63–L76**
 
 ---
 
@@ -80,7 +81,7 @@
 | Step 3 アップロード API | ✅ 完了 | **L26–L35** |
 | Step 4 media_service | ✅ 完了 | **L37–L46** |
 | Step 5 openai_service | ✅ 完了 | **L48–L56** |
-| Step 6 chunk_service | ⬜ 未着手 | **L58–L67** |
+| Step 6 chunk_service | ✅ 完了 | **L58–L67** |
 | Step 7 merge_service | ⬜ 未着手 | **L69–L77** |
 | Step 8 エラー処理 | 🔶 一部（変換失敗 / OpenAI 関連のみ） | **L79–L88** |
 | Step 9 テスト | ⬜ 未着手 | **L90–L100** |
@@ -99,12 +100,12 @@
 |----------|------|------|
 | `app/main.py` | ✅ 最小 + 例外ハンドラー | `architecture/file-responsibilities.md` **L7–L22** |
 | 文字起こしルート（設計上のパス名は `routes`） | 🔶 Step 5 まで | **L24–L40** |
-| `app/core/config.py` | ✅ OpenAI 設定まで | **L42–L53** |
-| `app/core/errors.py` | 🔶 ffmpeg / 変換失敗 / OpenAI 関連のみ | **L55–L63** |
+| `app/core/config.py` | ✅ OpenAI + chunk 設定まで | **L42–L53** |
+| `app/core/errors.py` | 🔶 ffmpeg / 変換失敗 / OpenAI / chunking 関連 | **L55–L63** |
 | `app/schemas/transcription.py` | ⬜ 未着手 | **L65–L73** |
 | `transcription_service.py` | ⬜ 未着手 | **L75–L88** |
 | `media_service.py` | ✅ 完了 | **L90–L101** |
-| `chunk_service.py` | ⬜ 未着手 | **L103–L113** |
+| `chunk_service.py` | ✅ 完了 | **L103–L113** |
 | `openai_service.py` | ✅ 小さいファイルの単発文字起こしまで | **L115–L124** |
 | `merge_service.py` | ⬜ 未着手 | **L128–L137** |
 | `file_utils.py` / `time_utils.py` | ⬜ 未着手 | **L139–L158** |
@@ -118,8 +119,9 @@
 | 対応拡張子 | ✅ ルーター側でチェック | **L27–L39** |
 | `tmp/uploads/` 保存 | ✅ | **L41–L45** |
 | ffmpeg 正規化 | ✅ | **L47–L58** |
-| サイズ確認・単発 / チャンク分岐 | 🔶 サイズ取得のみ（分岐なし） | **L60–L74** |
+| サイズ確認・単発 / チャンク分岐 | 🔶 `needs_chunking` 実装済み（ルーター統合は未） | **L60–L74** |
 | 単発文字起こし | ✅ `whisper-1` で実動作確認済み | **L76–L81** |
+| チャンク分割 | ✅ `create_chunks` 実装済み | **L82–L87** |
 | チャンク文字起こし・マージ・一時ファイル削除 | ⬜ 未着手 | **L82–L92** |
 
 ### API 仕様（リクエスト / レスポンス / エラー）
