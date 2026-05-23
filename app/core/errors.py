@@ -24,3 +24,8 @@ class OpenAIAPIError(TranscribeAPIError):
     def __init__(self, message: str) -> None:
         super().__init__("openai_api_error", message)
 
+
+class ChunkingFailedError(TranscribeAPIError):
+    def __init__(self, message: str) -> None:
+        super().__init__("chunking_failed", message)
+
