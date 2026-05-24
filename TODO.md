@@ -24,12 +24,13 @@
 | **`TranscribeAPIError` のグローバル例外ハンドラー**（設計どおりの `{ "error": { "code", "message" } }` 形式） | `app/main.py` |
 | **`chunk_service`**（サイズ判定、無音検出、チャンク書き出し、開始/終了秒メタデータ） | `app/services/chunk_service.py`、`architecture/implementation-steps.md` **L58–L67** |
 | 一時ディレクトリ `app/tmp/chunks/` | `chunk_service` のパス解決 |
+| **`merge_service`**（チャンク文字起こし結果の順次結合、空白整理、レスポンス用 `chunks` / `duration_seconds`） | `app/services/merge_service.py`、`architecture/implementation-steps.md` **L69–L77** |
 
-**現状の到達点:** Step 6 まで完了。25MB 以下は単発文字起こし、超過ファイルは `chunk_service` で分割可能（ルーター統合は未実施）。
+**現状の到達点:** Step 7 まで完了。25MB 以下は単発文字起こし、超過ファイルは `chunk_service` で分割可能。チャンク結合は `merge_service` で実装済み（ルーター / `transcription_service` 統合は未実施）。
 
 ### 未完了・未着手（設計どおりまだないもの）
 
-- `merge_service` / `transcription_service`
+- `transcription_service`
 - `app/schemas/transcription.py`、`app/utils/*`  
 - 設計どおりの成功レスポンス（`text` は返却済み。`language` / `duration_seconds` / `chunks` などは未実装）  
 - Step 8 相当の**エラー処理の完全統一**（拡張子エラー等はまだ `HTTPException` の plain `detail`）  
@@ -56,15 +57,14 @@
 
 ## 次にやるべきこと（優先順）
 
-設計上の推奨順は `architecture/implementation-steps.md` **L69 以降**（Step 6 は完了）。
+設計上の推奨順は `architecture/implementation-steps.md` **L79 以降**（Step 7 は完了）。
 
-1. **Step 7: `merge_service`** — `architecture/implementation-steps.md` **L69–L77**、`architecture/file-responsibilities.md` **L128–L137**
-2. **`transcription_service` で全体オーケストレーション** — `architecture/file-responsibilities.md` **L75–L88**、フロー全体 `architecture/processing-flow.md` **L5–L19**、**L82–L92**
+1. **`transcription_service` で全体オーケストレーション** — `architecture/file-responsibilities.md` **L75–L88**、フロー全体 `architecture/processing-flow.md` **L5–L19**、**L82–L92**
    - ルーターから `prepare_audio` 直呼びを service 層へ移す
    - `needs_chunking` / `create_chunks` を組み込む
-3. **Step 8: エラー処理・レスポンス形式の統一** — `architecture/implementation-steps.md` **L79–L88**、エラー一覧 `architecture/api-design.md` **L41–L61**、エラー定義の置き場 `architecture/file-responsibilities.md` **L55–L63**
-4. **Step 9: テスト** — `architecture/implementation-steps.md` **L90–L100**
-5. **Step 10: 非同期ジョブは将来検討** — `architecture/implementation-steps.md` **L102–L113**、`architecture/api-design.md` **L63–L76**
+2. **Step 8: エラー処理・レスポンス形式の統一** — `architecture/implementation-steps.md` **L79–L88**、エラー一覧 `architecture/api-design.md` **L41–L61**、エラー定義の置き場 `architecture/file-responsibilities.md` **L55–L63**
+3. **Step 9: テスト** — `architecture/implementation-steps.md` **L90–L100**
+4. **Step 10: 非同期ジョブは将来検討** — `architecture/implementation-steps.md` **L102–L113**、`architecture/api-design.md` **L63–L76**
 
 ---
 
@@ -82,7 +82,7 @@
 | Step 4 media_service | ✅ 完了 | **L37–L46** |
 | Step 5 openai_service | ✅ 完了 | **L48–L56** |
 | Step 6 chunk_service | ✅ 完了 | **L58–L67** |
-| Step 7 merge_service | ⬜ 未着手 | **L69–L77** |
+| Step 7 merge_service | ✅ 完了 | **L69–L77** |
 | Step 8 エラー処理 | 🔶 一部（変換失敗 / OpenAI 関連のみ） | **L79–L88** |
 | Step 9 テスト | ⬜ 未着手 | **L90–L100** |
 | Step 10 ジョブ化の検討 | ⬜ 将来 | **L102–L113** |
@@ -107,7 +107,7 @@
 | `media_service.py` | ✅ 完了 | **L90–L101** |
 | `chunk_service.py` | ✅ 完了 | **L103–L113** |
 | `openai_service.py` | ✅ 小さいファイルの単発文字起こしまで | **L115–L124** |
-| `merge_service.py` | ⬜ 未着手 | **L128–L137** |
+| `merge_service.py` | ✅ 完了 | **L128–L137** |
 | `file_utils.py` / `time_utils.py` | ⬜ 未着手 | **L139–L158** |
 
 ### 処理フロー（実装の流れと一時ディレクトリ）
@@ -122,7 +122,9 @@
 | サイズ確認・単発 / チャンク分岐 | 🔶 `needs_chunking` 実装済み（ルーター統合は未） | **L60–L74** |
 | 単発文字起こし | ✅ `whisper-1` で実動作確認済み | **L76–L81** |
 | チャンク分割 | ✅ `create_chunks` 実装済み | **L82–L87** |
-| チャンク文字起こし・マージ・一時ファイル削除 | ⬜ 未着手 | **L82–L92** |
+| チャンク文字起こし | ⬜ 未着手（ルーター / service 統合） | **L82–L87** |
+| チャンク結果マージ | ✅ `merge_service` 実装済み（統合は未） | **L82–L87** |
+| 一時ファイル削除 | ⬜ 未着手 | **L88–L92** |
 
 ### API 仕様（リクエスト / レスポンス / エラー）
 
