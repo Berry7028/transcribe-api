@@ -33,7 +33,7 @@ def _tmp_dir(name: str) -> Path:
     return directory
 
 
-def _run_ffmpeg(stream: ffmpeg.nodes.StreamOutput, output_path: Path) -> None:
+def _run_ffmpeg(stream: ffmpeg.nodes.OutputStream, output_path: Path) -> None:
     try:
         stream.overwrite_output().run(capture_stdout=True, capture_stderr=True)
     except ffmpeg.Error as exc:
