@@ -19,6 +19,12 @@ dependencies = [
     "audioop-lts; python_version >= '3.13'",
 ]
 
+[project.optional-dependencies]
+test = [
+    "httpx>=0.27.0",
+    "pytest>=8.0.0",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
