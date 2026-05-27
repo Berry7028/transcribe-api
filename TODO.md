@@ -20,29 +20,28 @@
 | **`app/core/config.py`**（`.env` / `.env.local` 読み込み、OpenAI API キー、文字起こしモデル設定） | `app/core/config.py` |
 | **`openai_service`**（OpenAI Speech to Text API 呼び出し、`whisper-1` で文字起こし） | `app/services/openai_service.py` |
 | アップロード後に `prepare_audio` → OpenAI 文字起こしを実行し、`text` を返す | `app/api/routers/transcription.py` |
-| **`errors.py`（一部）** — `TranscribeAPIError` と ffmpeg / 変換失敗用例外 | `app/core/errors.py` |
-| **`TranscribeAPIError` のグローバル例外ハンドラー**（設計どおりの `{ "error": { "code", "message" } }` 形式） | `app/main.py` |
+| **`errors.py`** — Step 8 の主要エラーコード（未対応形式 / 不正リクエスト / 変換失敗 / OpenAI 失敗 / チャンク失敗 / ローカル上限超過 / 一時ファイル削除失敗）を定義 | `app/core/errors.py` |
+| **エラー用グローバル例外ハンドラー**（`TranscribeAPIError` / FastAPI バリデーション / HTTP 例外を `{ "error": { "code", "message" } }` 形式へ統一） | `app/main.py` |
 | **`chunk_service`**（サイズ判定、無音検出、チャンク書き出し、開始/終了秒メタデータ） | `app/services/chunk_service.py`、`architecture/implementation-steps.md` **L58–L67** |
 | 一時ディレクトリ `app/tmp/chunks/` | `chunk_service` のパス解決 |
+| 未対応拡張子エラーを統一形式で返却 | `app/api/routers/transcription.py` |
 | **`merge_service`**（チャンク文字起こし結果の順次結合、空白整理、レスポンス用 `chunks` / `duration_seconds`） | `app/services/merge_service.py`、`architecture/implementation-steps.md` **L69–L77** |
 
-**現状の到達点:** Step 7 まで完了。25MB 以下は単発文字起こし、超過ファイルは `chunk_service` で分割可能。チャンク結合は `merge_service` で実装済み（ルーター / `transcription_service` 統合は未実施）。
+**現状の到達点:** Step 7 と Step 8 が完了。25MB 以下は単発文字起こし、超過ファイルは `chunk_service` で分割可能。チャンク結合は `merge_service` で実装済み（ルーター / `transcription_service` 統合は未実施）。
 
 ### 未完了・未着手（設計どおりまだないもの）
 
 - `transcription_service`
 - `app/schemas/transcription.py`、`app/utils/*`  
 - 設計どおりの成功レスポンス（`text` は返却済み。`language` / `duration_seconds` / `chunks` などは未実装）  
-- Step 8 相当の**エラー処理の完全統一**（拡張子エラー等はまだ `HTTPException` の plain `detail`）  
 - 一時ファイルの削除処理  
 - テスト、`tests/`  
 
-### 部分的にできているもの（Step 8 前の暫定）
+### 部分的にできているもの
 
 | 内容 | 状態 |
 |------|------|
-| `app/core/errors.py` | ffmpeg / 変換失敗 / OpenAI / chunking 関連。全エラーコードは未網羅 |
-| API エラーレスポンス | `TranscribeAPIError` 経由のみ統一。400 系は未統一 |
+| 一時ファイル削除失敗 | エラーコードは定義済み。削除処理自体は今後の実装対象 |
 | ルーターの責務 | 保存・拡張子チェックに加え `prepare_audio` / `transcribe_audio` 呼び出しまで実装（本来は `transcription_service` へ移す想定） |
 
 ### ドキュメントとコードのずれ（把握用）
@@ -62,9 +61,8 @@
 1. **`transcription_service` で全体オーケストレーション** — `architecture/file-responsibilities.md` **L75–L88**、フロー全体 `architecture/processing-flow.md` **L5–L19**、**L82–L92**
    - ルーターから `prepare_audio` 直呼びを service 層へ移す
    - `needs_chunking` / `create_chunks` を組み込む
-2. **Step 8: エラー処理・レスポンス形式の統一** — `architecture/implementation-steps.md` **L79–L88**、エラー一覧 `architecture/api-design.md` **L41–L61**、エラー定義の置き場 `architecture/file-responsibilities.md` **L55–L63**
-3. **Step 9: テスト** — `architecture/implementation-steps.md` **L90–L100**
-4. **Step 10: 非同期ジョブは将来検討** — `architecture/implementation-steps.md` **L102–L113**、`architecture/api-design.md` **L63–L76**
+2. **Step 9: テスト** — `architecture/implementation-steps.md` **L90–L100**
+3. **Step 10: 非同期ジョブは将来検討** — `architecture/implementation-steps.md` **L102–L113**、`architecture/api-design.md` **L63–L76**
 
 ---
 
@@ -83,7 +81,7 @@
 | Step 5 openai_service | ✅ 完了 | **L48–L56** |
 | Step 6 chunk_service | ✅ 完了 | **L58–L67** |
 | Step 7 merge_service | ✅ 完了 | **L69–L77** |
-| Step 8 エラー処理 | 🔶 一部（変換失敗 / OpenAI 関連のみ） | **L79–L88** |
+| Step 8 エラー処理 | ✅ 完了 | **L79–L88** |
 | Step 9 テスト | ⬜ 未着手 | **L90–L100** |
 | Step 10 ジョブ化の検討 | ⬜ 将来 | **L102–L113** |
 
@@ -98,10 +96,10 @@
 
 | ファイル | 状態 | 参照 |
 |----------|------|------|
-| `app/main.py` | ✅ 最小 + 例外ハンドラー | `architecture/file-responsibilities.md` **L7–L22** |
+| `app/main.py` | ✅ 最小 + 統一例外ハンドラー | `architecture/file-responsibilities.md` **L7–L22** |
 | 文字起こしルート（設計上のパス名は `routes`） | 🔶 Step 5 まで | **L24–L40** |
 | `app/core/config.py` | ✅ OpenAI + chunk 設定まで | **L42–L53** |
-| `app/core/errors.py` | 🔶 ffmpeg / 変換失敗 / OpenAI / chunking 関連 | **L55–L63** |
+| `app/core/errors.py` | ✅ Step 8 のエラーコード定義まで | **L55–L63** |
 | `app/schemas/transcription.py` | ⬜ 未着手 | **L65–L73** |
 | `transcription_service.py` | ⬜ 未着手 | **L75–L88** |
 | `media_service.py` | ✅ 完了 | **L90–L101** |
@@ -132,7 +130,7 @@
 |------|------|------|
 | `POST /transcriptions`、multipart | ✅（URL は `/api/transcriptions`） | `architecture/api-design.md` **L5–L18** |
 | 成功レスポンス JSON | 🔶 `text` は返却済み。まだデバッグ用フィールド（`saved_path` / `normalized_path` 等）あり | **L20–L38** |
-| エラー形式・エラーコード一覧 | 🔶 変換失敗 / OpenAI 関連のみ統一形式 | **L41–L61** |
+| エラー形式・エラーコード一覧 | ✅ 統一形式に対応 | **L41–L61** |
 | 同期優先・将来ジョブ API | — | **L63–L76** |
 
 ### チャンク分割の詳細
