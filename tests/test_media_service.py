@@ -24,7 +24,11 @@ def test_prepare_audio_extracts_video_before_normalizing(monkeypatch):
         ("extract", "/tmp/source.mp4"),
         ("normalize", "/tmp/extracted.wav"),
     ]
-    assert result == {"normalized_path": "/tmp/normalized.mp3", "size_bytes": 1234}
+    assert result == {
+        "extracted_path": "/tmp/extracted.wav",
+        "normalized_path": "/tmp/normalized.mp3",
+        "size_bytes": 1234,
+    }
 
 
 def test_prepare_audio_normalizes_audio_without_extracting(monkeypatch):
@@ -44,3 +48,4 @@ def test_prepare_audio_normalizes_audio_without_extracting(monkeypatch):
     assert calls == ["ensure", ("normalize", "/tmp/source.wav")]
     assert result["normalized_path"] == "/tmp/normalized.mp3"
     assert result["size_bytes"] == 5678
+    assert "extracted_path" not in result

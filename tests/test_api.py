@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.api.routers import transcription
 from app.main import app
+from app.schemas.transcription import TranscriptionResponse
 
 
 client = TestClient(app)
@@ -24,13 +25,20 @@ def test_transcriptions_rejects_unsupported_file_type():
     assert response.json()["error"]["code"] == "unsupported_file_type"
 
 
-def test_transcriptions_uses_prepared_audio_and_returns_text(monkeypatch):
-    monkeypatch.setattr(
-        transcription,
-        "prepare_audio",
-        lambda path: {"normalized_path": "/tmp/normalized.mp3", "size_bytes": 42},
-    )
-    monkeypatch.setattr(transcription, "transcribe_audio", lambda path: "文字起こし結果")
+def test_transcriptions_uses_service_and_returns_transcription(monkeypatch):
+    service_calls = []
+
+    def fake_transcribe_file(path):
+        service_calls.append(path)
+        return TranscriptionResponse(
+            text="文字起こし結果",
+            language=None,
+            duration_seconds=1.25,
+            model="whisper-1",
+            chunks=[],
+        )
+
+    monkeypatch.setattr(transcription, "transcribe_file", fake_transcribe_file)
 
     response = client.post(
         "/api/transcriptions",
@@ -39,7 +47,9 @@ def test_transcriptions_uses_prepared_audio_and_returns_text(monkeypatch):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["filename"] == "voice.wav"
-    assert body["normalized_path"] == "/tmp/normalized.mp3"
-    assert body["size_bytes"] == 42
     assert body["text"] == "文字起こし結果"
+    assert body["duration_seconds"] == 1.25
+    assert body["model"] == "whisper-1"
+    assert body["chunks"] == []
+    assert len(service_calls) == 1
+    assert service_calls[0].endswith(".wav")
