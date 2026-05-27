@@ -1,4 +1,6 @@
 class TranscribeAPIError(Exception):
+    """APIレスポンスへそのまま変換できるアプリ共通の基底例外。"""
+
     def __init__(self, code: str, message: str, status_code: int = 500) -> None:
         self.code = code
         self.message = message

@@ -6,6 +6,7 @@ from app.services.chunk_service import AudioChunk
 def test_transcribe_file_returns_single_file_response_and_cleans_up(monkeypatch):
     cleanup_calls = []
 
+    # 単一ファイル経路の制御フローだけを見るため、外部I/Oはすべて差し替える。
     monkeypatch.setattr(
         transcription_service,
         "prepare_audio",
@@ -33,6 +34,7 @@ def test_transcribe_file_transcribes_chunks_and_merges(monkeypatch):
         AudioChunk(index=0, path="/tmp/chunk0.mp3", start_seconds=0.0, end_seconds=1.0, size_bytes=10),
     ]
 
+    # チャンク順が入力順と異なっても、結合結果が音声順に戻ることを確認する。
     monkeypatch.setattr(
         transcription_service,
         "prepare_audio",

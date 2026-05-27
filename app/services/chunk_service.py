@@ -19,12 +19,16 @@ from app.core.errors import (
 NORMALIZED_AUDIO_CODEC = "libmp3lame"
 NORMALIZED_SAMPLE_RATE = 16_000
 NORMALIZED_CHANNELS = 1
+
+# 書き出し後の実サイズが想定より大きい場合に、少しずつ末尾を詰めて上限内へ収める。
 _CHUNK_SIZE_SHRINK_MAX_ATTEMPTS = 48
 _CHUNK_SIZE_FIT_MARGIN = 0.92
 
 
 @dataclass(frozen=True)
 class AudioChunk:
+    """OpenAI API に個別アップロードする音声チャンクのメタデータ。"""
+
     index: int
     path: str
     start_seconds: float
@@ -88,6 +92,8 @@ def _silence_gaps(
     min_silence_len_ms: int,
     silence_thresh_db_offset: int,
 ) -> list[tuple[int, int]]:
+    """指定範囲内で、分割候補にできる無音区間を絶対ミリ秒で返す。"""
+
     segment = audio[start_ms:end_ms]
     if len(segment) == 0:
         return []
@@ -101,6 +107,7 @@ def _silence_gaps(
 
     gaps: list[tuple[int, int]] = []
     if not nonsilent:
+        # 完全な無音区間なら、指定範囲全体を分割候補として扱う。
         return [(start_ms, end_ms)]
 
     if nonsilent[0][0] > 0:
@@ -126,6 +133,8 @@ def _pick_split_ms(
     max_end_ms: int,
     keep_silence_ms: int,
 ) -> int | None:
+    """上限内に収まる無音区間から、目標終了時刻に最も近い分割点を選ぶ。"""
+
     best_split: int | None = None
     best_distance = float("inf")
 
@@ -134,6 +143,7 @@ def _pick_split_ms(
         if gap_length <= keep_silence_ms * 2:
             split_ms = gap_start + gap_length // 2
         else:
+            # 前後に少し無音を残し、単語や短い間が切れにくい位置を選ぶ。
             split_ms = gap_start + keep_silence_ms + (gap_length - keep_silence_ms * 2) // 2
 
         if split_ms <= start_ms or split_ms > max_end_ms:
@@ -153,6 +163,8 @@ def _find_split_ms(
     duration_ms: int,
     bytes_per_ms: float,
 ) -> tuple[int, bool]:
+    """次チャンクの終了位置と、時間ベース分割に落ちたかどうかを返す。"""
+
     remaining_ms = duration_ms - start_ms
     remaining_bytes = _estimate_size_bytes(bytes_per_ms, remaining_ms)
 
@@ -175,6 +187,7 @@ def _find_split_ms(
         ),
     )
 
+    # まず通常条件で無音を探し、見つからなければ短めの無音にも広げて再探索する。
     for min_silence_len_ms, silence_thresh_db_offset in search_params:
         gaps = _silence_gaps(
             audio,
@@ -193,6 +206,7 @@ def _find_split_ms(
         if split_ms is not None:
             return (split_ms, False)
 
+    # 無音が見つからない音声では、アップロード上限に収まる時間で機械的に切る。
     split_ms = max_end_ms
     if split_ms <= start_ms:
         split_ms = min(start_ms + max(1, max_duration_ms // 2), duration_ms)
@@ -208,6 +222,8 @@ def _export_chunk(
     start_seconds: float,
     duration_seconds: float,
 ) -> None:
+    """元音声の指定範囲だけを、正規化済みMP3チャンクとして書き出す。"""
+
     stream = (
         ffmpeg.input(source_path, ss=start_seconds)
         .output(
@@ -227,6 +243,8 @@ def _export_with_size_limit(
     start_ms: int,
     end_ms: int,
 ) -> AudioChunk:
+    """チャンクを書き出し、実ファイルサイズが上限を超えたら範囲を短縮する。"""
+
     start_seconds = _ms_to_seconds(start_ms)
     current_end_ms = end_ms
 
@@ -278,6 +296,8 @@ def _export_with_size_limit(
 
 
 def create_chunks(normalized_path: str) -> list[AudioChunk]:
+    """正規化済み音声をOpenAI APIのサイズ上限に収まる複数ファイルへ分割する。"""
+
     _ensure_ffmpeg_available()
 
     source_path = Path(normalized_path)
@@ -334,6 +354,7 @@ def create_chunks(normalized_path: str) -> list[AudioChunk]:
 
         overlap_ms = 0
         if used_time_fallback:
+            # 無音で切れなかった場合だけ、設定された重なりを入れて聞き落としを抑える。
             overlap_ms = int(settings.chunk_time_fallback_overlap_seconds * 1000)
         if overlap_ms > 0:
             start_ms = max(actual_end_ms - overlap_ms, start_ms + 1)

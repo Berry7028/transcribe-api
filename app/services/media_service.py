@@ -17,6 +17,7 @@ VIDEO_EXTENSIONS = {
     ".3gp",
 }
 
+# Whisper API に送る前に、音声は同じサンプルレート・チャンネル数へ正規化する。
 NORMALIZED_AUDIO_CODEC = "libmp3lame"
 NORMALIZED_SAMPLE_RATE = 16_000
 NORMALIZED_CHANNELS = 1
@@ -41,6 +42,7 @@ def get_duration_seconds(file_path: str) -> float:
 
 
 def _tmp_dir(name: str) -> Path:
+    # app/tmp 配下に用途別ディレクトリを作ることで、削除対象を追いやすくする。
     base_dir = Path(__file__).resolve().parent
     directory = (base_dir / f"../tmp/{name}").resolve()
     directory.mkdir(parents=True, exist_ok=True)
@@ -48,6 +50,7 @@ def _tmp_dir(name: str) -> Path:
 
 
 def _run_ffmpeg(stream: ffmpeg.nodes.OutputStream, output_path: Path) -> None:
+    # ffmpeg-python の例外には標準エラーが入るため、変換失敗時の診断に含める。
     try:
         stream.overwrite_output().run(capture_stdout=True, capture_stderr=True)
     except ffmpeg.Error as exc:
@@ -59,6 +62,7 @@ def _run_ffmpeg(stream: ffmpeg.nodes.OutputStream, output_path: Path) -> None:
 
 
 def ensure_ffmpeg_available() -> None:
+    # pydub/ffmpeg-python の遅い失敗より先に、実行ファイルの有無を明示的に確認する。
     ffmpeg_path = shutil.which("ffmpeg")
     if ffmpeg_path is None:
         raise FFmpegNotAvailableError()
@@ -74,6 +78,8 @@ def ensure_ffmpeg_available() -> None:
 
 
 def extract_audio(file_path: str) -> str:
+    """動画ファイルからモノラル16kHzのWAV音声を抽出する。"""
+
     extracted_dir = _tmp_dir("extracted")
     output_path = extracted_dir / f"{uuid4().hex}.wav"
 
@@ -92,6 +98,8 @@ def extract_audio(file_path: str) -> str:
 
 
 def normalize_audio(file_path: str) -> str:
+    """OpenAI API のアップロードに使うMP3へ正規化する。"""
+
     normalized_dir = _tmp_dir("normalized")
     output_path = normalized_dir / f"{uuid4().hex}.mp3"
 
@@ -109,11 +117,14 @@ def normalize_audio(file_path: str) -> str:
 
 
 def prepare_audio(input_path: str) -> dict[str, str | int]:
+    """入力ファイルを文字起こし可能な音声ファイルへ変換する。"""
+
     ensure_ffmpeg_available()
 
     extension = Path(input_path).suffix.lower()
     extracted_path = None
     if extension in VIDEO_EXTENSIONS:
+        # 動画は一度WAVへ抽出してからMP3化し、以降の処理を音声ファイルに統一する。
         extracted_path = extract_audio(input_path)
         normalized_path = normalize_audio(extracted_path)
     else:

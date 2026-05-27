@@ -28,6 +28,8 @@ class MergedTranscription:
 
 
 def normalize_text(text: str) -> str:
+    """APIレスポンス用に前後空白と連続空白を正規化する。"""
+
     stripped = text.strip()
     if not stripped:
         return ""
@@ -37,6 +39,7 @@ def normalize_text(text: str) -> str:
 def _sorted_chunks(
     chunk_transcriptions: list[ChunkTranscription],
 ) -> list[ChunkTranscription]:
+    # 分割処理や非同期化の影響で順序が崩れても、レスポンスでは元の音声順に戻す。
     if not chunk_transcriptions:
         raise ValueError("結合するチャンクの文字起こし結果がありません")
 
@@ -58,6 +61,7 @@ def _build_response_chunks(
 
 
 def _merge_text(chunk_transcriptions: list[ChunkTranscription]) -> str:
+    # 空文字チャンクは結合テキストから除き、レスポンスの chunks には残す。
     parts: list[str] = []
     for chunk in chunk_transcriptions:
         normalized = normalize_text(chunk.text)
@@ -73,6 +77,8 @@ def _duration_seconds(chunk_transcriptions: list[ChunkTranscription]) -> float:
 def merge_chunk_transcriptions(
     chunk_transcriptions: list[ChunkTranscription],
 ) -> MergedTranscription:
+    """チャンク単位の文字起こし結果を、単一レスポンスへまとめる。"""
+
     ordered = _sorted_chunks(chunk_transcriptions)
     response_chunks = _build_response_chunks(ordered)
 
