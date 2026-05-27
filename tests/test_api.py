@@ -29,6 +29,7 @@ def test_transcriptions_uses_service_and_returns_transcription(monkeypatch):
     service_calls = []
 
     def fake_transcribe_file(path):
+        # API層の責務だけを検証するため、実際のffmpeg/OpenAI呼び出しは避ける。
         service_calls.append(path)
         return TranscriptionResponse(
             text="文字起こし結果",

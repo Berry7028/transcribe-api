@@ -4,9 +4,12 @@ from app.core.errors import MissingAPIKeyError, OpenAIAPIError
 
 
 def transcribe_audio(file_path: str) -> str:
+    """単一の音声ファイルをOpenAIの文字起こしAPIへ送信する。"""
+
     if not settings.openai_api_key:
         raise MissingAPIKeyError()
 
+    # APIキーはリクエスト時に設定するため、テストでは settings を差し替えやすい。
     client = OpenAI(api_key=settings.openai_api_key)
 
     try:

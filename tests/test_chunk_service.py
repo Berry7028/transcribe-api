@@ -16,6 +16,7 @@ def test_create_chunks_splits_until_audio_end(monkeypatch, tmp_path):
     source.write_bytes(b"audio")
 
     class FakeAudio:
+        # AudioSegment の長さだけが必要なテストなので、最小限のスタブにする。
         def __len__(self):
             return 2000
 

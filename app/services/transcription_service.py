@@ -9,10 +9,13 @@ from app.utils.time_utils import round_seconds
 
 
 def transcribe_file(file_path: str) -> TranscriptionResponse:
+    """アップロード済みファイルを正規化し、必要なら分割して文字起こしする。"""
+
     cleanup_paths = [file_path]
     processing_error: BaseException | None = None
 
     try:
+        # Whisper API に渡す前に、動画抽出と音声形式の正規化を済ませる。
         prepared = prepare_audio(file_path)
         normalized_path = str(prepared["normalized_path"])
         cleanup_paths.append(normalized_path)
@@ -23,6 +26,7 @@ def transcribe_file(file_path: str) -> TranscriptionResponse:
 
         size_bytes = int(prepared["size_bytes"])
         if needs_chunking(size_bytes):
+            # OpenAI のアップロード上限を超える場合は、チャンク単位で転記してから結合する。
             chunks = create_chunks(normalized_path)
             cleanup_paths.extend(chunk.path for chunk in chunks)
             return _transcribe_chunks(chunks)
@@ -40,13 +44,17 @@ def transcribe_file(file_path: str) -> TranscriptionResponse:
         raise
     finally:
         try:
+            # 変換中に失敗しても、作成済みの一時ファイルは可能な限り片付ける。
             cleanup_temp_files(cleanup_paths)
         except Exception:
+            # 元の処理エラーがある場合は、クリーンアップ失敗で本来の原因を隠さない。
             if processing_error is None:
                 raise
 
 
 def _transcribe_chunks(chunks: list[AudioChunk]) -> TranscriptionResponse:
+    """チャンクごとの文字起こし結果をAPIレスポンス用に統合する。"""
+
     chunk_transcriptions: list[ChunkTranscription] = []
 
     for chunk in chunks:
