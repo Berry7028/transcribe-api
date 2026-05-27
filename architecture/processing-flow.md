@@ -20,7 +20,7 @@
 
 ## 1. API がファイルを受け取る
 
-`app/api/routes/transcription.py` が担当します。
+`app/api/routers/transcription.py` が担当します。
 
 この時点では、ファイルを受け取って `transcription_service.py` に渡すだけにします。
 
@@ -28,7 +28,7 @@
 
 対応する拡張子だけ許可します。
 
-想定する対応形式:
+対応形式:
 
 - mp3
 - mp4
@@ -37,6 +37,15 @@
 - m4a
 - wav
 - webm
+- mov
+- avi
+- mkv
+- aac
+- flac
+- ogg
+- wma
+- 3gp
+- opus
 
 ## 3. 一時保存する
 

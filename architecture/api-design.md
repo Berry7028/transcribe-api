@@ -1,8 +1,8 @@
 # API Design
 
-最初に作る API は、文字起こしを実行する `POST /transcriptions` だけで十分です。
+最初に作る API は、文字起こしを実行する `POST /api/transcriptions` だけで十分です。
 
-## POST /transcriptions
+## POST /api/transcriptions
 
 音声または動画ファイルを受け取り、文字起こし結果を返します。
 
@@ -24,9 +24,9 @@ response_format: 任意。最初は json 固定でもよい
 ```json
 {
   "text": "文字起こし全文",
-  "language": "ja",
+  "language": null,
   "duration_seconds": 1234.5,
-  "model": "gpt-4o-transcribe",
+  "model": "whisper-1",
   "chunks": [
     {
       "index": 0,
@@ -64,7 +64,7 @@ response_format: 任意。最初は json 固定でもよい
 
 最初は同期処理で作ります。
 
-つまり、`POST /transcriptions` にファイルを送ると、文字起こしが完了するまで HTTP レスポンスを待つ方式です。
+つまり、`POST /api/transcriptions` にファイルを送ると、文字起こしが完了するまで HTTP レスポンスを待つ方式です。
 
 ただし長時間ファイルでは処理に時間がかかるので、将来的には以下の形に拡張する可能性があります。
 

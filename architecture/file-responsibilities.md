@@ -1,8 +1,6 @@
 # File Responsibilities
 
-ここでは、将来作る実装ファイルごとに「何を書くか」を整理します。
-
-コードはまだ書かず、責務だけを決めます。
+ここでは、実装ファイルごとに「何を書くか」を整理します。
 
 ## app/main.py
 
@@ -21,13 +19,13 @@ FastAPI アプリケーションの起動点です。
 - ffmpeg の処理
 - OpenAI API 呼び出し
 
-## app/api/routes/transcription.py
+## app/api/routers/transcription.py
 
 文字起こし API の HTTP エンドポイントを定義します。
 
 ここに書くこと:
 
-- `POST /transcriptions` の定義
+- `POST /api/transcriptions` の定義
 - `UploadFile` の受け取り
 - 任意パラメータの受け取り
 - `transcription_service.py` への処理依頼
@@ -70,7 +68,6 @@ FastAPI アプリケーションの起動点です。
 
 - チャンク結果の型
 - 全体の文字起こし結果の型
-- エラーレスポンスの型
 
 ## app/services/transcription_service.py
 
@@ -93,8 +90,6 @@ FastAPI アプリケーションの起動点です。
 
 ここに書くこと:
 
-- アップロードファイルの保存
-- 拡張子チェック
 - ffmpeg で動画から音声を抽出
 - ffmpeg で音声形式を正規化
 - 音声の長さ取得
@@ -142,10 +137,8 @@ OpenAI API との通信を担当します。
 
 ここに書くこと:
 
-- ファイルサイズ取得
-- 拡張子取得
-- 一時ファイル名生成
-- ディレクトリ作成
+- 一時ファイル削除
+- 必要になった小さいファイル操作
 
 ## app/utils/time_utils.py
 

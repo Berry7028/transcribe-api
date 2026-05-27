@@ -27,12 +27,12 @@
 
 やること:
 
-- `POST /transcriptions` を作る
+- `POST /api/transcriptions` を作る
 - `UploadFile` を受け取る
 - 一時ディレクトリに保存する
 - 対応拡張子だけ許可する
 この段階では、まだ OpenAI API を呼ばなくてもよいです。
-!!! ここまでやった
+完了済みです。
 
 ## Step 4: media_service
 
@@ -98,6 +98,8 @@
 - API の簡単なテスト
 
 OpenAI API を直接呼ぶテストは最初は避け、モックにします。
+
+ここまで完了済みです。現在は `transcription_service` が単発文字起こしとチャンク文字起こしの分岐、結合、一時ファイル削除をまとめています。
 
 ## Step 10: 非同期ジョブ化の検討
 
