@@ -21,7 +21,7 @@
 最初は、音声または動画ファイルをアップロードして文字起こし結果を返す API を作成します。
 
 ```text
-POST /transcriptions
+POST /api/transcriptions
 ```
 
 想定する処理の流れは以下です。
@@ -35,7 +35,21 @@ POST /transcriptions
 
 ## 現在の状態
 
-現時点では、実装前の設計ドキュメントを `architecture/` にまとめています。
+同期 API として、アップロード、音声正規化、OpenAI Speech to Text API 連携、サイズ超過時のチャンク分割、チャンク結果の結合、一時ファイル削除まで実装済みです。
+
+ローカル起動:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+テスト:
+
+```bash
+pytest
+```
+
+設計ドキュメントは `architecture/` にまとめています。
 
 - `architecture/README.md`: 設計全体の概要
 - `architecture/project-structure.md`: 想定するディレクトリ構成

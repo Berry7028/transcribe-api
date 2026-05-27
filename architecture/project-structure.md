@@ -7,7 +7,7 @@ transcribe-api/
   app/
     main.py
     api/
-      routes/
+      routers/
         transcription.py
     core/
       config.py
@@ -50,7 +50,7 @@ transcribe-api/
 
 FastAPI の起動、API ルーティング、リクエスト受け取り、音声処理、OpenAI API 呼び出しなどをここにまとめます。
 
-## app/api/routes/
+## app/api/routers/
 
 HTTP API のエンドポイントを置きます。
 
