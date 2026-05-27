@@ -26,8 +26,9 @@
 | 一時ディレクトリ `app/tmp/chunks/` | `chunk_service` のパス解決 |
 | 未対応拡張子エラーを統一形式で返却 | `app/api/routers/transcription.py` |
 | **`merge_service`**（チャンク文字起こし結果の順次結合、空白整理、レスポンス用 `chunks` / `duration_seconds`） | `app/services/merge_service.py`、`architecture/implementation-steps.md` **L69–L77** |
+| **Step 9 テスト**（`media_service` / `chunk_service` / `merge_service` / API の pytest。OpenAI API と ffmpeg 実処理はモック） | `tests/`、`pyproject.toml`、`architecture/implementation-steps.md` **L90–L100** |
 
-**現状の到達点:** Step 7 と Step 8 が完了。25MB 以下は単発文字起こし、超過ファイルは `chunk_service` で分割可能。チャンク結合は `merge_service` で実装済み（ルーター / `transcription_service` 統合は未実施）。
+**現状の到達点:** Step 9 まで完了。25MB 以下は単発文字起こし、超過ファイルは `chunk_service` で分割可能。チャンク結合は `merge_service` で実装済み（ルーター / `transcription_service` 統合は未実施）。テストは OpenAI API を直接呼ばず、重い外部処理をモックして実行可能。
 
 ### 未完了・未着手（設計どおりまだないもの）
 
@@ -35,7 +36,6 @@
 - `app/schemas/transcription.py`、`app/utils/*`  
 - 設計どおりの成功レスポンス（`text` は返却済み。`language` / `duration_seconds` / `chunks` などは未実装）  
 - 一時ファイルの削除処理  
-- テスト、`tests/`  
 
 ### 部分的にできているもの
 
@@ -56,13 +56,12 @@
 
 ## 次にやるべきこと（優先順）
 
-設計上の推奨順は `architecture/implementation-steps.md` **L79 以降**（Step 7 は完了）。
+設計上の推奨順は `architecture/implementation-steps.md` **L79 以降**（Step 9 まで完了）。
 
 1. **`transcription_service` で全体オーケストレーション** — `architecture/file-responsibilities.md` **L75–L88**、フロー全体 `architecture/processing-flow.md` **L5–L19**、**L82–L92**
    - ルーターから `prepare_audio` 直呼びを service 層へ移す
    - `needs_chunking` / `create_chunks` を組み込む
-2. **Step 9: テスト** — `architecture/implementation-steps.md` **L90–L100**
-3. **Step 10: 非同期ジョブは将来検討** — `architecture/implementation-steps.md` **L102–L113**、`architecture/api-design.md` **L63–L76**
+2. **Step 10: 非同期ジョブは将来検討** — `architecture/implementation-steps.md` **L102–L113**、`architecture/api-design.md` **L63–L76**
 
 ---
 
@@ -82,7 +81,7 @@
 | Step 6 chunk_service | ✅ 完了 | **L58–L67** |
 | Step 7 merge_service | ✅ 完了 | **L69–L77** |
 | Step 8 エラー処理 | ✅ 完了 | **L79–L88** |
-| Step 9 テスト | ⬜ 未着手 | **L90–L100** |
+| Step 9 テスト | ✅ 完了 | **L90–L100** |
 | Step 10 ジョブ化の検討 | ⬜ 将来 | **L102–L113** |
 
 ### ディレクトリ・ファイル名の約束
