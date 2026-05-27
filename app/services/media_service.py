@@ -26,6 +26,20 @@ def get_file_size(file_path: str) -> int:
     return os.path.getsize(file_path)
 
 
+def get_duration_seconds(file_path: str) -> float:
+    try:
+        probe = ffmpeg.probe(file_path)
+    except ffmpeg.Error as exc:
+        stderr = exc.stderr.decode() if exc.stderr else str(exc)
+        raise MediaConversionError(f"音声ファイルの長さを取得できませんでした: {stderr}") from exc
+
+    duration = probe.get("format", {}).get("duration")
+    if duration is None:
+        raise MediaConversionError("音声ファイルの長さを取得できませんでした")
+
+    return float(duration)
+
+
 def _tmp_dir(name: str) -> Path:
     base_dir = Path(__file__).resolve().parent
     directory = (base_dir / f"../tmp/{name}").resolve()
@@ -98,13 +112,17 @@ def prepare_audio(input_path: str) -> dict[str, str | int]:
     ensure_ffmpeg_available()
 
     extension = Path(input_path).suffix.lower()
+    extracted_path = None
     if extension in VIDEO_EXTENSIONS:
         extracted_path = extract_audio(input_path)
         normalized_path = normalize_audio(extracted_path)
     else:
         normalized_path = normalize_audio(input_path)
 
-    return {
+    result: dict[str, str | int] = {
         "normalized_path": normalized_path,
         "size_bytes": get_file_size(normalized_path),
     }
+    if extracted_path is not None:
+        result["extracted_path"] = extracted_path
+    return result
